@@ -1,80 +1,109 @@
-from time import sleep
+import gc
+import jpegdec
+from urllib import urequest
+from ujson import load
 from picographics import PicoGraphics, DISPLAY_INKY_FRAME_7 as DISPLAY
+import inky_helper as ih
+
+gc.collect()
+
+try:
+    from secrets import WIFI_SSID, WIFI_PASSWORD
+    ih.network_connect(WIFI_SSID, WIFI_PASSWORD)
+except ImportError:
+    print("Create secrets.py with your WiFi credentials")
+gc.collect()
+
+graphics = None
+WIDTH = None
+HEIGHT = None
+
+graphics = PicoGraphics(DISPLAY)
+WIDTH, HEIGHT = graphics.get_bounds()
+graphics.set_font("serif")
+
+FILENAME = "nasa-apod-daily-2.jpg"
+
+# A Demo Key is used in this example and is IP rate limited. You can get your own API Key from https://api.nasa.gov/
+API_URL = "https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY"
+
+# Length of time between updates in minutes.
+# Frequent updates will reduce battery life!
+UPDATE_INTERVAL = 240
+
+# Variable for storing the NASA APOD Title
+apod_title = None
 
 
-# Sleep to allow USB to initialize
-sleep(0.5)
+def show_error(text):
+    graphics.set_pen(4)
+    graphics.rectangle(0, 10, WIDTH, 35)
+    graphics.set_pen(1)
+    graphics.text(text, 5, 16, 400, 2)
 
 
-COLOR_WHITE = 1
-COLOR_BLACK = 0
-Y_OFFSET = 35
+def update():
+    global apod_title
+
+    if True:
+        # Image for Inky Frame 5.7
+        IMG_URL = "https://i.imgur.com/Vnfuid9.jpg"
+    elif HEIGHT == 400:
+        # Image for Inky Frame 4.0
+        IMG_URL = "https://pimoroni.github.io/feed2image/nasa-apod-640x400-daily.jpg"
+    elif HEIGHT == 480:
+        IMG_URL = "https://pimoroni.github.io/feed2image/nasa-apod-800x480-daily.jpg"
+
+    try:
+        # Grab the data
+        socket = urequest.urlopen(API_URL)
+        gc.collect()
+        j = load(socket)
+        socket.close()
+        apod_title = j['title']
+        gc.collect()
+    except OSError as e:
+        print(e)
+        apod_title = "Image Title Unavailable"
+
+    try:
+        # Grab the image
+        print(f"Getting image URL: {IMG_URL}")
+        socket = urequest.urlopen(IMG_URL)
+
+        gc.collect()
+
+        data = bytearray(1024)
+        print("Writing data to file from socket...")
+        with open(FILENAME, "wb") as f:
+            while True:
+                if socket.readinto(data) == 0:
+                    break
+                f.write(data)
+                print(".", end="")
+        socket.close()
+        del data
+        gc.collect()
+    except OSError as e:
+        print(e)
+        show_error("Unable to download image")
 
 
-class Display:
-    
-    def __init__(self):
-        self.graphics = None
-        self.font_scale = 2
-        self.init_graphics()
+def draw():
+    jpeg = jpegdec.JPEG(graphics)
+    gc.collect()  # For good measure...
 
-    def init_graphics(self):
-        self.graphics = PicoGraphics(DISPLAY)
-        self.width, self.height = self.graphics.get_bounds()
-        self.graphics.set_font("bitmap8")
+    graphics.set_pen(1)
+    graphics.clear()
 
+    jpeg.open_file(FILENAME)
+    jpeg.decode()
 
-    def clear(self, color):
-        """
-        Fill the display with the given color.
-        """
-        self.graphics.set_pen(color)
-        self.graphics.clear()
+    gc.collect()
 
+    graphics.update()
 
-    def demo_hello_world(self):
-        """
-        Display a hello world message.
-        """
-        self.clear(COLOR_WHITE)
-        self.graphics.set_pen(COLOR_BLACK)
-        #self.graphics.set_thickness(2)
-        self.graphics.text("Hello World", 0, 0 + Y_OFFSET, scale=self.font_scale)
-        self.graphics.update()
-    
-    
-    def demo_word_repeat(self, word):
-        """
-        Artfully repeat a word across the screen with a horizontal offset on
-        each row to create a staggered effect.
-        """
-        # Clear the screen and set a white background
-        self.clear(COLOR_WHITE)
-        # Set the text color to black
-        self.graphics.set_pen(COLOR_BLACK)
-        # Define spacing between words
-        word_width = self.graphics.measure_text(word, self.font_scale)
-        spacing = 20
-        vertical_spacing = (8 * self.font_scale) + spacing
-        horizontal_offset_increment = word_width // 2
-        # Calculate number of words per row and number of rows, adding a few extra 
-        # for both to ensure that applying our horizontal offset doesn't leave 
-        # any part of the screen blank
-        words_per_row = (self.width // (word_width + spacing)) + 10
-        num_rows = self.height // vertical_spacing + 10
-        # Draw words to screen
-        for row in range(num_rows):
-            for col in range(words_per_row):
-                self.graphics.text(
-                    word,
-                    col * (word_width + spacing) - (horizontal_offset_increment * row),
-                    row * vertical_spacing,
-                    scale=self.font_scale
-                )
-        self.graphics.update()
-        
+update()
+draw()
 
-display = Display()
-display.demo_word_repeat("devika")
-#display.demo_hello_world()
 
